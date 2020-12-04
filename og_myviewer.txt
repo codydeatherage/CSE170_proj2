@@ -1,0 +1,449 @@
+# include "my_viewer.h"
+
+# include <sigogl/ui_button.h>
+# include <sigogl/ui_radio_button.h>
+# include <sig/sn_primitive.h>
+# include <sig/sn_transform.h>
+# include <sig/sn_manipulator.h>
+
+# include <sigogl/ws_run.h>
+
+SnTransform* front_wheel_trans;
+SnTransform* rear_wheel_trans;
+
+SnTransform* left_fork_trans;
+SnTransform* mid_fork_trans;
+SnTransform* right_fork_trans;
+
+SnTransform* frame_top_trans;
+SnTransform* frame_left_trans;
+SnTransform* frame_right_trans;
+SnTransform* frame_botR_trans;
+SnTransform* frame_botL_trans;
+SnTransform* frame_right_L_trans;
+SnTransform* frame_right_R_trans;
+SnTransform* frame_cross_trans;
+SnTransform* frame_seat_trans;
+
+SnTransform* handle_base_trans;
+SnTransform* handle_left_trans;
+SnTransform* handle_right_trans;
+SnTransform* handle_cross_trans;
+
+SnTransform* floor_trans;
+float currentWheelAngle = 0.0f;
+
+static GsVec left_trans;
+static GsVec hb_joint;
+
+
+MyViewer::MyViewer(int x, int y, int w, int h, const char* l) : WsViewer(x, y, w, h, l)
+{
+	_nbut = 0;
+	_animating = false;
+	build_ui();
+	build_scene();
+}
+
+GsVec MyViewer::newCross(GsVec a, GsVec b) {
+	GsVec result;
+	result = GsVec ((a.y * b.z) - (a.z * b.y), (a.z*b.x) - (a.x*b.z) , (a.x*b.y) - (a.y*b.x) );
+
+	return result;
+}
+
+void MyViewer::build_ui()
+{
+	UiPanel* p, * sp;
+	UiManager* uim = WsWindow::uim();
+	p = uim->add_panel("", UiPanel::HorizLeft);
+	p->add(new UiButton("View", sp = new UiPanel()));
+	{	UiPanel* p = sp;
+	p->add(_nbut = new UiCheckButton("Normals", EvNormals));
+	}
+	p->add(new UiButton("Animate", EvAnimate));
+	p->add(new UiButton("Exit", EvExit)); p->top()->separate();
+}
+
+GsVec calculatDeltas(const GsMat& A, const GsMat& B) {
+	//A should be part1, B should be part2, C should be part3, if applicable
+	//Example: A is shoulder joint, B is elbow joint
+
+	float x1 = A.e14;
+	float x2 = B.e14;
+
+	float y1 = A.e24;
+	float y2 = B.e24;
+
+	float z1 = A.e34;
+	float z2 = B.e34;
+
+	float dX = x1 - x2;
+	float dY = y1 - y2;
+	float dZ = z1 - z2;
+
+	return GsVec(dX, dY, dZ);
+}
+
+void MyViewer::add_model(SnPrimitive* s, GsVec p, SnTransform* t)
+{
+	GsModel& a = *s->model();
+	SnGroup* g = new SnGroup;
+	g->separator(true);
+
+	GsMat origin;
+	origin.translation(p);
+	a.transform(origin, true);
+
+	g->add(t);
+	g->add(s);
+
+	rootg()->add(g);
+}
+
+void MyViewer::build_wheels() {
+	SnPrimitive* p;
+
+	p = new SnPrimitive(GsPrimitive::Cylinder, 0.5f, 0.5f, 0.03f);
+	p->prim().material.diffuse = GsColor::blue;
+	add_model(p, GsVec(0.0f, 0.0f, 0), front_wheel_trans = new SnTransform);
+	GsMat rotation_front, transl_front, rotation_rear, transl_rear;
+	GsMat& currentTransMatrix_front = front_wheel_trans->get();
+	
+	rotation_front.rotz(GS_TORAD(90.0f));
+	currentTransMatrix_front.mult(currentTransMatrix_front, rotation_front);
+	rotation_front.rotx(GS_TORAD(90.0f));
+	currentTransMatrix_front.mult(currentTransMatrix_front, rotation_front);
+	//currentTransMatrix.mult(currentTransMatrix, transl);
+	p = new SnPrimitive(GsPrimitive::Cylinder, 0.5f, 0.5f, 0.03f);
+	p->prim().material.diffuse = GsColor::red;
+
+	add_model(p, GsVec(3.0f, 0, 0), rear_wheel_trans = new SnTransform);
+	GsMat& currentTransMatrix_rear = rear_wheel_trans->get();
+	rotation_rear.rotx(GS_TORAD(90.0f));
+	currentTransMatrix_rear.mult(currentTransMatrix_rear, rotation_rear);
+}
+
+void MyViewer::build_fork() {
+	SnPrimitive* p;
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.01f, 0.01f, 0.4f);
+	p->prim().material.diffuse = GsColor::red;
+	add_model(p, GsVec(0, 0, 0), left_fork_trans = new SnTransform);
+	GsMat& currentTransMatrix_left = left_fork_trans->get();
+	GsMat rotation_left, transl_left;
+	transl_left.translation(GsVec(0, 0.4f, 0.05f));
+	rotation_left.rotz(GS_TORAD(-30.0f));
+	currentTransMatrix_left.mult(currentTransMatrix_left, rotation_left);
+	currentTransMatrix_left.mult(currentTransMatrix_left, transl_left);
+	
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.01f, 0.01f, 0.40f);
+	p->prim().material.diffuse = GsColor::orange;
+	add_model(p, GsVec(0, 0, 0), right_fork_trans = new SnTransform);
+	GsMat& currentTransMatrix_right = right_fork_trans->get();
+	GsMat rotation_right, transl_right;
+	transl_right.translation(GsVec(0, 0.4f, -0.05f));
+	rotation_right.rotz(GS_TORAD(-30.0f));
+	currentTransMatrix_right.mult(currentTransMatrix_right, rotation_right);
+	currentTransMatrix_right.mult(currentTransMatrix_right, transl_right);
+
+
+	p = new SnPrimitive(GsPrimitive::Cylinder, 0.05f, 0.05f, 0.45f);
+	p->prim().material.diffuse = GsColor::white;
+	add_model(p, GsVec(0, 0, 0), mid_fork_trans = new SnTransform);
+	GsMat& currentTransMatrix_mid = mid_fork_trans->get();
+	GsMat rotation_mid, transl_mid;
+	rotation_mid.rotz(GS_TORAD(-30.0f));
+	transl_mid.translation(GsVec(0, 1.0f, 0));
+	currentTransMatrix_mid.mult(currentTransMatrix_mid, rotation_mid);
+	currentTransMatrix_mid.mult(currentTransMatrix_mid, transl_mid);
+}
+
+void MyViewer::build_frame() {
+	SnPrimitive* p;
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.05f, 0.05f, 0.75f);
+	p->prim().material.diffuse = GsColor::cyan;
+	add_model(p, GsVec(0, 0, 0), frame_top_trans = new SnTransform);
+	GsMat& currentTransMatrix_top = frame_top_trans->get();
+	GsMat rotation_top, transl_top;
+	rotation_top.rotz(GS_TORAD(90.0f));
+	transl_top.translation(GsVec(1.0f, -1.335f, 0));
+	currentTransMatrix_top.mult(currentTransMatrix_top, rotation_top);
+	currentTransMatrix_top.mult(currentTransMatrix_top, transl_top);
+
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.045f, 0.045f, 0.6f);
+	p->prim().material.diffuse = GsColor::cyan;
+	add_model(p, GsVec(0, 0, 0), frame_left_trans = new SnTransform);
+	GsMat& current_TransMatrix_left = frame_left_trans->get();
+	GsMat rotation_left, transl_left;
+	rotation_left.rotz(GS_TORAD(40.0f));
+	transl_left.translation(GsVec(1.0f, -0.25f, 0));
+	current_TransMatrix_left.mult(current_TransMatrix_left, rotation_left);
+	current_TransMatrix_left.mult(current_TransMatrix_left, transl_left);
+
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.0425f, 0.0425f, 0.8f);
+	p->prim().material.diffuse = GsColor::cyan;
+	add_model(p, GsVec(0, 0, 0), frame_botL_trans = new SnTransform);
+	GsMat& currentTransMatrix_botL = frame_botL_trans->get();
+	GsMat rotation_botL, transl_botL;
+	rotation_botL.rotz(GS_TORAD(90.0f));
+	currentTransMatrix_botL.mult(currentTransMatrix_botL, rotation_botL);
+	rotation_botL.rotx(GS_TORAD(-3.0f));
+	transl_botL.translation(GsVec(0.0f, -2.105f, -0.0625f));
+	currentTransMatrix_botL.mult(currentTransMatrix_botL, rotation_botL);
+	currentTransMatrix_botL.mult(currentTransMatrix_botL, transl_botL);
+
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.045f, 0.045f, 0.8f);
+	p->prim().material.diffuse = GsColor::cyan;
+	add_model(p, GsVec(0, 0, 0), frame_botR_trans = new SnTransform);
+	GsMat& currentTransMatrix_botR = frame_botR_trans->get();
+	GsMat rotation_botR, transl_botR;
+	rotation_botR.rotz(GS_TORAD(90.0f));
+	currentTransMatrix_botR.mult(currentTransMatrix_botR, rotation_botR);
+	rotation_botR.rotx(GS_TORAD(3.0f));
+	transl_botR.translation(GsVec(0.0f, -2.105f, 0.06f));
+	currentTransMatrix_botR.mult(currentTransMatrix_botR, rotation_botR);
+	currentTransMatrix_botR.mult(currentTransMatrix_botR, transl_botR);
+
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.04f, 0.04f, 0.65f);
+	p->prim().material.diffuse = GsColor::cyan;
+	add_model(p, GsVec(0, 0, 0), frame_right_L_trans = new SnTransform);
+	GsMat& currentTransMatrix_right_L = frame_right_L_trans->get();
+	GsMat rotation_right_L, transl_right_L;
+	rotation_right_L.rotz(GS_TORAD(40.0f));
+	currentTransMatrix_right_L.mult(currentTransMatrix_right_L, rotation_right_L);
+	rotation_right_L.rotx(GS_TORAD(-3.0f));
+	transl_right_L.translation(GsVec(2.265f, -1.25f, -0.0175f));
+	currentTransMatrix_right_L.mult(currentTransMatrix_right_L, rotation_right_L);
+	currentTransMatrix_right_L.mult(currentTransMatrix_right_L, transl_right_L);
+
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.04f, 0.04f, 0.65f);
+	p->prim().material.diffuse = GsColor::cyan;
+	add_model(p, GsVec(0, 0, 0), frame_right_R_trans = new SnTransform);
+	GsMat& currentTransMatrix_right_R = frame_right_R_trans->get();
+	GsMat rotation_right_R, transl_right_R;
+	rotation_right_R.rotz(GS_TORAD(40.0f));
+	currentTransMatrix_right_R.mult(currentTransMatrix_right_R, rotation_right_R);
+	rotation_right_R.rotx(GS_TORAD(3.0f));
+	transl_right_R.translation(GsVec(2.265f, -1.25f, 0.01f));
+	currentTransMatrix_right_R.mult(currentTransMatrix_right_R, rotation_right_R);
+	currentTransMatrix_right_R.mult(currentTransMatrix_right_R, transl_right_R);
+	
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.045f, 0.045f, 0.7f);
+	p->prim().material.diffuse = GsColor::cyan;
+	add_model(p, GsVec(0, 0, 0), frame_cross_trans = new SnTransform);
+	GsMat& currentTransMatrix_cross = frame_cross_trans->get();
+	GsMat rotation_cross, transl_cross;
+	rotation_cross.rotz(GS_TORAD(-40.0f));
+	transl_cross.translation(GsVec(1.775f, 0.6f, 0));
+	currentTransMatrix_cross.mult(currentTransMatrix_cross, transl_cross);
+	currentTransMatrix_cross.mult(currentTransMatrix_cross, rotation_cross);
+
+	p = new SnPrimitive(GsPrimitive::Box, 0.2f, 0.05f, 0.075f);
+	p->prim().material.diffuse = GsColor::black;
+	add_model(p, GsVec(0, 0, 0), frame_seat_trans = new SnTransform);
+	GsMat& currentTransMatrix_seat = frame_seat_trans->get();
+	GsMat rotation_seat, transl_seat;
+
+	transl_seat.translation(GsVec(2.15f, 1.2f, 0.0f));
+	currentTransMatrix_seat.mult(currentTransMatrix_seat, transl_seat);
+}
+
+void MyViewer::build_handlebars() {
+	SnPrimitive* p;
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.05f, 0.05f, 0.1f);
+	p->prim().material.diffuse = GsColor::white;
+	add_model(p, GsVec(0, 0, 0), handle_base_trans = new SnTransform);
+	GsMat& currentTransMatrix_base = handle_base_trans->get();
+	GsMat transl_base;
+	transl_base.translation(GsVec(0.715f, 1.34f, 0));
+	currentTransMatrix_base.mult(currentTransMatrix_base, transl_base);
+
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.025f, 0.025f, 0.2f);
+	p->prim().material.diffuse = GsColor::green;
+	add_model(p, GsVec(0, 0, 0), handle_cross_trans = new SnTransform);
+	GsMat& currentTransMatrix_cross = handle_cross_trans->get();
+	GsMat rotation_cross, transl_cross;
+	rotation_cross.rotx(GS_TORAD(90.0f));
+	transl_cross.translation(GsVec(0.715f, 1.44f, 0.0f));
+	currentTransMatrix_cross.mult(currentTransMatrix_cross, transl_cross);
+	currentTransMatrix_cross.mult(currentTransMatrix_cross, rotation_cross);
+
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.04f, 0.04f, 0.5f);
+	p->prim().material.diffuse = GsColor::green;
+	add_model(p, GsVec(0, 0, 0), handle_left_trans = new SnTransform);
+	GsMat& currentTransMatrix_left = handle_left_trans->get();
+	GsMat rotation_left, transl_left;
+
+	rotation_left.rotz(GS_TORAD(90.0f));
+	currentTransMatrix_left.mult(currentTransMatrix_left, rotation_left);
+	rotation_left.rotx(GS_TORAD(-45.0f));
+	currentTransMatrix_left.mult(currentTransMatrix_left, rotation_left);
+	transl_left.translation(GsVec(1.45f, -1.15f, -0.35f));
+	currentTransMatrix_left.mult(currentTransMatrix_left, transl_left);
+
+	p = new SnPrimitive(GsPrimitive::Capsule, 0.04f, 0.04f, 0.5f);
+	p->prim().material.diffuse = GsColor::green;
+	add_model(p, GsVec(0, 0, 0), handle_right_trans = new SnTransform);
+	GsMat& currentTransMatrix_right = handle_right_trans->get();
+	GsMat rotation_right, transl_right;
+	transl_right.translation(GsVec(1.05f, 1.45f, -0.55f));
+	currentTransMatrix_right.mult(currentTransMatrix_right, transl_right);
+	rotation_right.rotz(GS_TORAD(90.0f));
+	currentTransMatrix_right.mult(currentTransMatrix_right, rotation_right);
+	rotation_right.rotx(GS_TORAD(45.0f));
+	currentTransMatrix_right.mult(currentTransMatrix_right, rotation_right);
+
+}
+
+void MyViewer::build_floor() {
+	SnPrimitive* p;
+	p = new SnPrimitive(GsPrimitive::Box, 20.0f, 0.01f, 20.0f);
+	p->prim().material.diffuse = GsColor::green;
+	add_model(p, GsVec(0, -0.5f, 0), floor_trans = new SnTransform);
+}
+
+void MyViewer::build_scene() {
+	background(GsColor::gray);
+	build_wheels();
+	build_fork();
+	build_frame();
+	build_handlebars();
+//	left_trans = GsVec(&handle_cross_trans->get().e14 - &handle_left_trans->get().e14, &handle_cross_trans->get().e24 - &handle_left_trans->get().e24, &handle_cross_trans->get().e34 - &handle_left_trans->get().e34);
+	left_trans = calculatDeltas(handle_cross_trans->get(), handle_left_trans->get());
+	//build_floor();
+}
+
+void MyViewer::turn_right() {
+	GsMat& handle_cross = handle_cross_trans->get();
+	GsMat& handle_left = handle_left_trans->get();
+	GsMat& handle_right = handle_right_trans->get();
+	GsMat& front_wheel = front_wheel_trans->get();
+	GsMat rotate_left, rotate_cross, rotate_right, rotate_wheel;
+	GsMat transl_left, transl_cross, transl_right, transl_wheel;
+
+	rotate_wheel.rotx(GS_TORAD(-3.0f));
+	
+	rotate_cross.rotz(GS_TORAD(3.0f));
+
+	transl_left.translation(left_trans);
+	rotate_left.rotx(GS_TORAD(-3.0f));
+	handle_left.mult(handle_left, transl_left);
+	handle_left.mult(handle_left, rotate_left);
+
+	transl_left.translation(-left_trans);
+	handle_left.mult(handle_left, transl_left);
+
+/*
+	transl_right.translation(new_trans);
+	handle_right.mult(handle_right, transl_right);
+	
+	rotate_right.rotx(GS_TORAD(-3.0f));
+	handle_right.mult(handle_right, rotate_right);
+
+	transl_right.translation(-new_trans);
+	handle_right.mult(handle_right, transl_right);
+	
+	*/
+	currentWheelAngle -= 3.0f;
+	front_wheel.mult(front_wheel, rotate_wheel);
+	handle_cross.mult(handle_cross, rotate_cross);
+//	handle_left.mult(handle_left, rotate_left);
+//handle_right.mult(handle_right, rotate_right);
+}
+
+void MyViewer::turn_left() {
+	GsMat& handle_cross = handle_cross_trans->get();
+	GsMat& handle_left = handle_left_trans->get();
+	GsMat& handle_right = handle_right_trans->get();
+	GsMat& front_wheel = front_wheel_trans->get();
+	GsMat rotate_left, rotate_cross, rotate_right, rotate_wheel;
+	GsMat transl_left, transl_cross, transl_right, transl_wheel;
+
+	rotate_wheel.rotx(GS_TORAD(3.0f));
+
+	rotate_cross.rotz(GS_TORAD(-3.0f));
+
+	static GsVec& left_trans = GsVec(handle_left.e14 - handle_cross.e14, handle_left.e24 - handle_cross.e24, handle_left.e34 - handle_cross.e34);
+	static GsVec& right_trans = GsVec(handle_right.e14 - handle_cross.e14, handle_right.e24 - handle_cross.e24, handle_right.e34 - handle_cross.e34);
+
+	static GsVec& new_trans = GsVec(handle_left.e14 - handle_right.e14, handle_left.e24 - handle_right.e24, handle_left.e34 - handle_right.e34);
+
+	//transl_left.translation(new_trans);
+	//handle_left.mult(handle_left, transl_left);
+	rotate_left.rotx(GS_TORAD(3.0f));
+	handle_left.mult(handle_left, rotate_left);
+	//transl_left.translation(-new_trans);
+	//handle_left.mult(handle_left, transl_left);
+
+/*
+	transl_right.translation(new_trans);
+	handle_right.mult(handle_right, transl_right);
+
+	rotate_right.rotx(GS_TORAD(3.0f));
+	handle_right.mult(handle_right, rotate_right);
+
+	transl_right.translation(-new_trans);
+	handle_right.mult(handle_right, transl_right);
+	*/
+
+	currentWheelAngle += 3.0f;
+	front_wheel.mult(front_wheel, rotate_wheel);
+	handle_cross.mult(handle_cross, rotate_cross);
+	//handle_left.mult(handle_left, rotate_left);
+//handle_right.mult(handle_right, rotate_right);
+
+}
+// Below is an example of how to control the main loop of an animation:
+void MyViewer::run_animation()
+{
+	if (_animating) return; // avoid recursive calls
+	_animating = true;
+
+	int ind = gs_random(0, rootg()->size() - 1); // pick one child
+	SnManipulator* manip = rootg()->get<SnManipulator>(ind); // access one of the manipulators
+	GsMat m = manip->mat();
+
+	double frdt = 1.0 / 30.0; // delta time to reach given number of frames per second
+	double v = 4; // target velocity is 1 unit per second
+	double t = 0, lt = 0, t0 = gs_time();
+	do // run for a while:
+	{
+		while (t - lt < frdt) { ws_check(); t = gs_time() - t0; } // wait until it is time for next frame
+		double yinc = (t - lt) * v;
+		if (t > 2) yinc = -yinc; // after 2 secs: go down
+		lt = t;
+		m.e24 += (float)yinc;
+		if (m.e24 < 0) m.e24 = 0; // make sure it does not go below 0
+		manip->initial_mat(m);
+		render(); // notify it needs redraw
+		ws_check(); // redraw now
+	} while (m.e24 > 0);
+	_animating = false;
+}
+
+
+int MyViewer::handle_keyboard(const GsEvent& e)
+{
+	int ret = WsViewer::handle_keyboard(e); // 1st let system check events
+	if (ret) return ret;
+
+	switch (e.key)
+	{
+	case GsEvent::KeyEsc: { gs_exit(); return 1; }
+	case 'q': { if (currentWheelAngle <= 60.0f && currentWheelAngle >= -60.0f) { turn_right(); ws_check(); render(); return 1; } }
+	case 'a': {ws_check(); render(); return 1; }
+	}
+			  return 0;
+	
+}
+
+int MyViewer::uievent(int e)
+{
+	switch (e)
+	{
+	case EvNormals: return 1;
+	case EvAnimate: run_animation(); return 1;
+	case EvExit: gs_exit();
+	}
+	return WsViewer::uievent(e);
+}

@@ -1,0 +1,639 @@
+# include "my_viewer.h"
+
+# include <sigogl/ui_button.h>
+# include <sigogl/ui_radio_button.h>
+# include <sig/sn_primitive.h>
+# include <sig/sn_transform.h>
+# include <sig/sn_manipulator.h>
+
+# include <sigogl/ws_run.h>
+
+//Front end of bike: front wheel, handlebars
+SnManipulator* front_wheel_manip = new SnManipulator;
+GsMat front_wheel_transl, front_wheel_rotat, front_wheel_start;
+
+SnManipulator* hb_left_lower_manip = new SnManipulator;
+GsMat hb_left_lower_transl, hb_left_lower_rotat, hb_left_lower_start;
+
+SnManipulator* hb_left_upper_manip = new SnManipulator;
+GsMat hb_left_upper_transl, hb_left_upper_rotat, hb_left_upper_start;
+
+SnManipulator* hb_right_upper_manip = new SnManipulator;
+GsMat hb_right_upper_transl, hb_right_upper_rotat, hb_right_upper_start;
+
+SnManipulator* hb_right_lower_manip = new SnManipulator;
+GsMat hb_right_lower_transl, hb_right_lower_rotat, hb_right_lower_start;
+
+SnManipulator* hb_joint_manip = new SnManipulator;
+GsMat hb_joint_transl, hb_joint_rotat, hb_joint_start;
+
+SnManipulator* front_bar_manip = new SnManipulator;
+GsMat front_bar_transl, front_bar_rotat, front_bar_start;
+
+//Frame of bike:
+SnManipulator* frame_top_manip = new SnManipulator;
+GsMat frame_top_transl, frame_top_rotat, frame_top_start;
+
+SnManipulator* frame_left_manip = new SnManipulator;
+GsMat frame_left_transl, frame_left_rotat, frame_left_start;
+
+SnManipulator* frame_right_manip = new SnManipulator;
+GsMat frame_right_transl, frame_right_rotat, frame_right_start;
+
+SnManipulator* rear_left_up_manip = new SnManipulator;
+GsMat rear_left_up_transl, rear_left_up_rotat, rear_left_up_start;
+
+SnManipulator* rear_left_low_manip = new SnManipulator;
+GsMat rear_left_low_transl, rear_left_low_rotat, rear_left_low_start;
+
+SnManipulator* rear_right_up_manip = new SnManipulator;
+GsMat rear_right_up_transl, rear_right_up_rotat, rear_right_up_start;
+
+SnManipulator* rear_right_low_manip = new SnManipulator;
+GsMat rear_right_low_transl, rear_right_low_rotat, rear_right_low_start;
+
+SnManipulator* frame_bot_manip = new SnManipulator;
+GsMat frame_bot_transl, frame_bot_rotat, frame_bot_start;
+
+SnManipulator* frame_cross_manip = new SnManipulator;
+GsMat frame_cross_transl, frame_cross_rotat, frame_cross_start;
+
+SnManipulator* rear_wheel_manip = new SnManipulator;
+GsMat rear_wheel_transl, rear_wheel_rotat, rear_wheel_start;
+
+SnManipulator* seat_manip = new SnManipulator;
+GsMat seat_transl, seat_rotat, seat_start;
+
+//Pedals
+SnManipulator* pedals_cross_manip = new SnManipulator;
+GsMat pedals_cross_transl, pedals_cross_rotat, pedals_cross_start;
+
+SnManipulator* left_vert_manip = new SnManipulator;
+GsMat left_vert_transl, left_vert_rotat, left_vert_start;
+
+SnManipulator* right_vert_manip = new SnManipulator;
+GsMat right_vert_transl, right_vert_rotat, right_vert_start;
+
+SnManipulator* left_horiz_manip = new SnManipulator;
+GsMat left_horiz_transl, left_horiz_rotat, left_horiz_start;
+
+SnManipulator* right_horiz_manip = new SnManipulator;
+GsMat right_horiz_transl, right_horiz_rotat, right_horiz_start;
+
+SnManipulator* left_pedal_manip = new SnManipulator;
+GsMat left_pedal_transl, left_pedal_rotat, left_pedal_start;
+
+SnManipulator* right_pedal_manip = new SnManipulator;
+GsMat right_pedal_transl, right_pedal_rotat, right_pedal_start;
+
+//Floor
+SnManipulator* floor_manip = new SnManipulator;
+GsMat floor_transl, floor_rotat, floor_start;
+
+SnManipulator* trunk_manip = new SnManipulator;
+GsMat trunk_transl, trunk_rotat, trunk_start;
+
+SnManipulator* canopy_manip = new SnManipulator;
+GsMat canopy_transl, canopy_rotat, canopy_start;
+
+
+
+float currentWheelAngle = 0.0f;
+float currentFrameAngle = 0.0f;
+float currentRotX = 0.0f;
+float currentRotY = 0.0f;
+float currentRotZ = 0.0f;
+float wheelRotSpeed = 1.0f;
+
+
+MyViewer::MyViewer(int x, int y, int w, int h, const char* l) : WsViewer(x, y, w, h, l)
+{
+	_nbut = 0;
+	_animating = false;
+	build_ui();
+	build_scene();
+}
+
+
+void MyViewer::build_ui()
+{
+	UiPanel* p, * sp;
+	UiManager* uim = WsWindow::uim();
+	p = uim->add_panel("", UiPanel::HorizLeft);
+	p->add(new UiButton("View", sp = new UiPanel()));
+	{	UiPanel* p = sp;
+	p->add(_nbut = new UiCheckButton("Normals", EvNormals));
+	}
+	p->add(new UiButton("Animate", EvAnimate));
+	p->add(new UiButton("Exit", EvExit)); p->top()->separate();
+}
+
+void MyViewer::add_model(SnShape* s, GsVec p)
+{
+	SnManipulator* manip = new SnManipulator;
+	GsMat m;
+	m.translation(p);
+	manip->initial_mat(m);
+	SnGroup* g = new SnGroup;
+	SnLines* l = new SnLines;
+	l->color(GsColor::orange);
+	g->add(s);
+	g->add(l);
+	manip->child(g);
+	manip->visible(false); // call this to turn off mouse interaction
+	rootg()->add(manip);
+}
+
+void MyViewer::build_front_end() {
+
+	GsModel* front_bar = new GsModel;
+	SnModel* front_bar_snmodel = new SnModel(front_bar);
+	SnGroup* front_end_group = new SnGroup;
+	front_end_group->add(front_bar_snmodel);
+	front_end_group->top<SnModel>()->color(GsColor::blue);
+	//Adding components to front bar anchor
+	front_bar_manip->child(front_end_group);
+	front_end_group->add(front_wheel_manip);
+	front_end_group->add(hb_left_lower_manip); 
+	front_end_group->add(hb_right_lower_manip);
+	front_end_group->add(hb_right_upper_manip);
+	front_end_group->add(hb_left_upper_manip);
+	front_end_group->add(hb_joint_manip);
+
+	//front_bar placement
+	front_bar_rotat.rotx(GS_TORAD(0.0f));
+	front_bar_transl.translation(0, 0.25f, 0);
+	front_bar_start = front_bar_rotat * front_bar_transl;
+	front_bar_manip->initial_mat(front_bar_start);
+	front_bar->make_capsule(GsPnt(0, 0, 0), GsPnt(0.35f, 0.75f, 0), 0.05f, 0.05f, 100, true);
+	front_bar_manip->visible(false);
+	rootg()->add(front_bar_manip);
+
+	//front_wheel placement
+	GsModel* front_wheel = new GsModel;
+	SnModel* front_wheel_snmodel = new SnModel(front_wheel);
+	SnGroup* front_wheel_grp = new SnGroup;
+	front_wheel_grp->add(front_wheel_snmodel);
+	front_wheel_grp->top<SnModel>()->color(GsColor::magenta);
+	front_wheel_manip->child(front_wheel_grp);
+	front_wheel_rotat.rotx(GS_TORAD(90.0f));
+	front_wheel_transl.translation(0, 0, 0);
+	front_wheel_start = front_wheel_rotat * front_wheel_transl;
+	front_wheel_manip->initial_mat(front_wheel_start);
+	front_wheel->make_cylinder(GsPnt(0, -0.025f, 0.0f), GsPnt(0, 0.025f, 0.0f), 0.25f, 0.25f, 100, true);
+	front_wheel_manip->visible(false);
+
+	//handlebar joint placement
+	GsModel* hb_joint = new GsModel;
+	SnModel* hb_joint_snmodel = new SnModel(hb_joint);
+	SnGroup* hb_joint_grp = new SnGroup;
+	hb_joint_grp->add(hb_joint_snmodel);
+	hb_joint_grp->top<SnModel>()->color(GsColor::black);
+	hb_joint_manip->child(hb_joint_grp);
+	hb_joint_transl.translation(0.375f, 0.75f, 0);
+	hb_joint_rotat.rotz(0);
+	hb_joint_start = hb_joint_rotat * hb_joint_transl;
+	hb_joint_manip->initial_mat(hb_joint_start);
+	hb_joint->make_sphere(GsPnt(0.0f, 0.0f, 0.0f), 0.045f, 100, true);
+	hb_joint_manip->visible(false);
+
+	//lower left handlebar placement
+	GsModel* hb_left_lower = new GsModel;
+	SnModel* hb_left_lower_snmodel = new SnModel(hb_left_lower);
+	SnGroup* hb_left_lower_grp = new SnGroup;
+	hb_left_lower_manip->visible(false);
+	hb_left_lower_grp->add(hb_left_lower_snmodel);
+	hb_left_lower_grp->top<SnModel>()->color(GsColor::black);
+	hb_left_lower_manip->child(hb_left_lower_grp);
+	hb_left_lower_rotat.rotz(0);
+	hb_left_lower_transl.translation(0.375f, 0.75f, 0);
+	hb_left_lower_start = hb_left_lower_rotat * hb_left_lower_transl;
+	hb_left_lower_manip->initial_mat(hb_left_lower_start);
+	hb_left_lower->make_capsule(GsPnt(0, 0, 0), GsPnt(0.05f, 0.025f, 0.15f), 0.025f, 0.025f, 100, true);
+
+	//lower right handlebar placement
+	GsModel* hb_right_lower = new GsModel;
+	SnModel* hb_right_lower_snmodel = new SnModel(hb_right_lower);
+	SnGroup* hb_right_lower_grp = new SnGroup;
+	hb_right_lower_manip->visible(false);
+	hb_right_lower_grp->add(hb_right_lower_snmodel);
+	hb_right_lower_grp->top<SnModel>()->color(GsColor::black);
+	hb_right_lower_manip->child(hb_right_lower_grp);
+	hb_right_lower_rotat.rotz(0);
+	hb_right_lower_transl.translation(0.375f, 0.75f, 0);
+	hb_right_lower_start = hb_right_lower_rotat * hb_right_lower_transl;
+	hb_right_lower_manip->initial_mat(hb_right_lower_start);
+	hb_right_lower->make_capsule(GsPnt(0, 0, 0), GsPnt(0.05f, 0.025f, -0.15f), 0.025f, 0.025f, 100, true);
+
+	//upper right handlebar placement
+	GsModel* hb_right_upper = new GsModel;
+	SnModel* hb_right_upper_snmodel = new SnModel(hb_right_upper);
+	SnGroup* hb_right_upper_grp = new SnGroup;
+	hb_right_upper_manip->visible(false);
+	hb_right_upper_grp->add(hb_right_upper_snmodel);
+	hb_right_upper_grp->top<SnModel>()->color(GsColor::red);
+	hb_right_upper_manip->child(hb_right_upper_grp);
+	hb_right_upper_rotat.rotz(0);
+	hb_right_upper_transl.translation(0.425f, 0.775f, 0.15f);
+	hb_right_upper_start = hb_right_upper_rotat * hb_right_upper_transl;
+	hb_right_upper_manip->initial_mat(hb_right_upper_start);
+	hb_right_upper->make_capsule(GsPnt(0, 0, 0), GsPnt(0.125f, 0.0f, 0.1f), 0.025f, 0.025f, 100, true);
+
+	//upper left hb placement
+	GsModel* hb_left_upper = new GsModel;
+	SnModel* hb_left_upper_snmodel = new SnModel(hb_left_upper);
+	SnGroup* hb_left_upper_grp = new SnGroup;
+	hb_left_upper_manip->visible(false);
+	hb_left_upper_grp->add(hb_left_upper_snmodel);
+	hb_left_upper_grp->top<SnModel>()->color(GsColor::red);
+	hb_left_upper_manip->child(hb_left_upper_grp);
+	hb_left_upper_rotat.rotz(0);
+	hb_left_upper_transl.translation(0.425f, 0.775f, -0.15f);
+	hb_left_upper_start = hb_left_upper_rotat * hb_left_upper_transl;
+	hb_left_upper_manip->initial_mat(hb_left_upper_start);
+	hb_left_upper->make_capsule(GsPnt(0, 0, 0), GsPnt(0.125f, 0.0f, -0.1f), 0.025f, 0.025f, 100, true);
+}
+void MyViewer::build_frame() {
+	GsModel* frame_top = new GsModel;
+	SnModel* frame_top_snmodel = new SnModel(frame_top);
+	SnGroup* frame_top_group = new SnGroup;
+	frame_top_group->add(frame_top_snmodel);
+	frame_top_group->top<SnModel>()->color(GsColor::white);
+	
+	//Adding components to frame-top anchor
+	frame_top_manip->child(frame_top_group);
+	frame_top_group->add(frame_left_manip);
+	frame_top_group->add(rear_left_up_manip);
+	frame_top_group->add(rear_right_up_manip);
+	frame_top_group->add(rear_left_low_manip);
+	frame_top_group->add(rear_right_low_manip);
+	frame_top_group->add(frame_cross_manip);
+	frame_top_group->add(rear_wheel_manip);
+	frame_top_group->add(seat_manip);
+	
+	//frame_top placement
+	frame_top_rotat.rotx(GS_TORAD(0.0f));
+	frame_top_transl.translation(0.0f, 0.25f, 0);
+	frame_top_start = frame_top_rotat * frame_top_transl;
+	frame_top_manip->initial_mat(frame_top_start);
+	frame_top->make_capsule(GsPnt(0.35f, 0.55f, 0), GsPnt(1.15f, 0.55f, 0), 0.04f, 0.04f, 100, true);
+	frame_top_manip->visible(false);
+	rootg()->add(frame_top_manip);
+
+	//Frame_left placement
+	GsModel* frame_left = new GsModel;
+	SnModel* frame_left_snmodel = new SnModel(frame_left);
+	SnGroup* frame_left_grp = new SnGroup;
+	frame_left_manip->visible(false);
+	frame_left_grp->add(frame_left_snmodel);
+	frame_left_grp->top<SnModel>()->color(GsColor::white);
+	frame_left_manip->child(frame_left_grp);
+	frame_left_rotat.rotz(0);
+	frame_left_transl.translation(0.3f, 0.5f, 0);
+	frame_left_start = frame_left_rotat * frame_left_transl;
+	frame_left_manip->initial_mat(frame_left_start);
+	frame_left->make_capsule(GsPnt(0, 0, 0), GsPnt(0.4f, -0.5f, 0), 0.04f, 0.04f, 100, true);
+
+	//Rear Left Upper frame placement
+	GsModel* rear_left_up = new GsModel;
+	SnModel* rear_left_up_snmodel = new SnModel(rear_left_up);
+	SnGroup* rear_left_up_grp = new SnGroup;
+	rear_left_up_manip->visible(false);
+	rear_left_up_grp->add(rear_left_up_snmodel);
+	rear_left_up_grp->top<SnModel>()->color(GsColor::white);
+	rear_left_up_manip->child(rear_left_up_grp);
+	rear_left_up_rotat.rotz(0);
+	rear_left_up_transl.translation(1.15f, 0.55f, 0);
+	rear_left_up_start = rear_left_up_rotat * rear_left_up_transl;
+	rear_left_up_manip->initial_mat(rear_left_up_start);
+	rear_left_up->make_capsule(GsPnt(0, 0, 0), GsPnt(0.45f, -0.55f, 0.09f), 0.03f, 0.03f, 100, true);
+
+	//Rear Right Upper frame placement
+	GsModel* rear_right_up = new GsModel;
+	SnModel* rear_right_up_snmodel = new SnModel(rear_right_up);
+	SnGroup* rear_right_up_grp = new SnGroup;
+	rear_right_up_manip->visible(false);
+	rear_right_up_grp->add(rear_right_up_snmodel);
+	rear_right_up_grp->top<SnModel>()->color(GsColor::white);
+	rear_right_up_manip->child(rear_right_up_grp);
+	rear_right_up_rotat.rotz(0);
+	rear_right_up_transl.translation(1.15f, 0.55f, 0);
+	rear_right_up_start = rear_left_up_rotat * rear_left_up_transl;
+	rear_right_up_manip->initial_mat(rear_right_up_start);
+	rear_right_up->make_capsule(GsPnt(0, 0, 0), GsPnt(0.45f, -0.55f, -0.09f), 0.03f, 0.03f, 100, true);
+
+	//Rear left lower frame piece placement
+	GsModel* rear_left_low = new GsModel;
+	SnModel* rear_left_low_snmodel = new SnModel(rear_left_low);
+	SnGroup* rear_left_low_grp = new SnGroup;
+	rear_left_low_manip->visible(false);
+	rear_left_low_grp->add(rear_left_low_snmodel);
+	rear_left_low_grp->top<SnModel>()->color(GsColor::white);
+	rear_left_low_manip->child(rear_left_low_grp);
+	rear_left_low_rotat.rotz(0);
+	rear_left_low_transl.translation(0.7f, 0, 0);
+	rear_left_low_start = rear_left_low_rotat * rear_left_low_transl;
+	rear_left_low_manip->initial_mat(rear_left_low_start);
+	rear_left_low->make_capsule(GsPnt(0, 0, 0), GsPnt(0.9f, 0, 0.09f), 0.03f, 0.03f, 100, true);
+
+	//Rear right lower frame piece placement
+	GsModel* rear_right_low = new GsModel;
+	SnModel* rear_right_low_snmodel = new SnModel(rear_right_low);
+	SnGroup* rear_right_low_grp = new SnGroup;
+	rear_right_low_manip->visible(false);
+	rear_right_low_grp->add(rear_right_low_snmodel);
+	rear_right_low_grp->top<SnModel>()->color(GsColor::white);
+	rear_right_low_manip->child(rear_right_low_grp);
+	rear_right_low_rotat.rotz(0);
+	rear_right_low_transl.translation(0.7f, 0, 0);
+	rear_right_low_start = rear_right_low_rotat * rear_right_low_transl;
+	rear_right_low_manip->initial_mat(rear_right_low_start);
+	rear_right_low->make_capsule(GsPnt(0, 0, 0), GsPnt(0.9f, 0, -0.09f), 0.03f, 0.03f, 100, true);
+
+	//Frame_cross placement
+	GsModel* frame_cross = new GsModel;
+	SnModel* frame_cross_snmodel = new SnModel(frame_cross);
+	SnGroup* frame_cross_grp = new SnGroup;
+	frame_cross_manip->visible(false);
+	frame_cross_grp->add(frame_cross_snmodel);
+	frame_cross_grp->top<SnModel>()->color(GsColor::white);
+	frame_cross_manip->child(frame_cross_grp);
+	frame_cross_rotat.rotz(0);
+	frame_cross_transl.translation(0.725f, 0.03f, 0);
+	frame_cross_start = frame_cross_rotat * frame_cross_transl;
+	frame_cross_manip->initial_mat(frame_cross_start);
+	frame_cross->make_capsule(GsPnt(0, 0, 0), GsPnt(0.4f, 0.5f, 0), 0.0425f, 0.0425f, 100, true);
+
+	//Rear wheel placement
+	GsModel* rear_wheel = new GsModel;
+	SnModel* rear_wheel_snmodel = new SnModel(rear_wheel);
+	SnGroup* rear_wheel_grp = new SnGroup;
+	rear_wheel_manip->visible(false);
+	rear_wheel_grp->add(rear_wheel_snmodel);
+	rear_wheel_grp->top<SnModel>()->color(GsColor::magenta);
+	rear_wheel_manip->child(rear_wheel_grp);
+	rear_wheel_rotat.rotx(GS_TORAD(90.0f));
+	rear_wheel_transl.translation(1.6f, 0, 0);
+	rear_wheel_start = rear_wheel_rotat * rear_wheel_transl;
+	rear_wheel_manip->initial_mat(rear_wheel_start);
+	rear_wheel->make_cylinder(GsPnt(0, -0.025f, 0.0f), GsPnt(0, 0.025f, 0.0f), 0.25f, 0.25f, 100, true);
+
+	//Seat placement
+	GsModel* seat = new GsModel;
+	SnModel* seat_snmodel = new SnModel(seat);
+	SnGroup* seat_grp = new SnGroup;
+	seat_manip->visible(false);
+	seat_grp->add(seat_snmodel);
+	seat_grp->top<SnModel>()->color(GsColor::magenta);
+	seat_manip->child(seat_grp);
+	seat_rotat.rotx(0);
+	seat_transl.translation(1.0f, 0.625f, 0);
+	seat_start = seat_rotat * seat_transl;
+	seat_manip->initial_mat(seat_start);
+	seat->make_box(GsBox(GsPnt(-0.1f, -0.05f, -0.05f), GsPnt(0.15f,0, 0.05f)));
+}
+
+void MyViewer::build_pedals() {
+	GsModel* pedals_cross = new GsModel;
+	SnModel* pedals_cross_snmodel = new SnModel(pedals_cross);
+	SnGroup* pedals_cross_group = new SnGroup;
+	pedals_cross_group->add(pedals_cross_snmodel);
+	pedals_cross_group->top<SnModel>()->color(GsColor::black);
+
+	//Adding components to pedal-cross anchor
+	pedals_cross_manip->child(pedals_cross_group);
+	pedals_cross_group->add(left_vert_manip);
+	pedals_cross_group->add(right_vert_manip);
+	pedals_cross_group->add(left_horiz_manip);
+	pedals_cross_group->add(right_horiz_manip);
+	pedals_cross_group->add(left_pedal_manip);
+	pedals_cross_group->add(right_pedal_manip);
+
+	//Pedal cross placement
+	pedals_cross_rotat.rotx(GS_TORAD(0.0f));
+	pedals_cross_transl.translation(0.0f, 0.0f, 0);
+	pedals_cross_start = pedals_cross_rotat * pedals_cross_transl;
+	pedals_cross_manip->initial_mat(pedals_cross_start);
+	pedals_cross->make_capsule(GsPnt(0.7f, 0.25f, 0.075f), GsPnt(0.7f, 0.25f, -0.075f), 0.015f, 0.015f, 100, true);
+	pedals_cross_manip->visible(false);
+	rootg()->add(pedals_cross_manip);
+
+	//left vertical pedal strut
+	GsModel* left_vert = new GsModel;
+	SnModel* left_vert_snmodel = new SnModel(left_vert);
+	SnGroup* left_vert_grp = new SnGroup;
+	left_vert_manip->visible(false);
+	left_vert_grp->add(left_vert_snmodel);
+	left_vert_grp->top<SnModel>()->color(GsColor::white);
+	left_vert_manip->child(left_vert_grp);
+	left_vert_rotat.rotz(0);
+	left_vert_transl.translation(0.7f, 0.25f, 0.075f);
+	left_vert_start = left_vert_rotat * left_vert_transl;
+	left_vert_manip->initial_mat(left_vert_start);
+	left_vert->make_capsule(GsPnt(0, 0, 0), GsPnt(0.0f, 0.1f, 0), 0.015f, 0.015f, 100, true);
+
+	//left horizontal pedal strut
+	GsModel* left_horiz = new GsModel;
+	SnModel* left_horiz_snmodel = new SnModel(left_horiz);
+	SnGroup* left_horiz_grp = new SnGroup;
+	left_horiz_manip->visible(false);
+	left_horiz_grp->add(left_horiz_snmodel);
+	left_horiz_grp->top<SnModel>()->color(GsColor::white);
+	left_horiz_manip->child(left_horiz_grp);
+	left_horiz_rotat.rotz(0);
+	left_horiz_transl.translation(0.7f, 0.35f, 0.075f);
+	left_horiz_start = left_horiz_rotat * left_horiz_transl;
+	left_horiz_manip->initial_mat(left_horiz_start);
+	left_horiz->make_cylinder(GsPnt(0, 0, 0), GsPnt(0.0f, 0.0f, 0.05f), 0.015f, 0.015f, 100, true);
+
+	//Left pedal
+	GsModel* left_pedal = new GsModel;
+	SnModel* left_pedal_snmodel = new SnModel(left_pedal);
+	SnGroup* left_pedal_grp = new SnGroup;
+	left_pedal_manip->visible(false);
+	left_pedal_grp->add(left_pedal_snmodel);
+	left_pedal_grp->top<SnModel>()->color(GsColor::red);
+	left_pedal_manip->child(left_pedal_grp);
+	left_pedal_rotat.rotx(0);
+	left_pedal_transl.translation(0.665f, 0.325f, 0.1f);
+	left_pedal_start = left_pedal_rotat* left_pedal_transl;
+	left_pedal_manip->initial_mat(left_pedal_start);
+	left_pedal->make_box(GsBox(GsPnt(0.0f, 0.0f, 0.0f), GsPnt(0.075f, 0.045f, 0.1f)));
+
+	//right vertical pedal strut
+	GsModel* right_vert = new GsModel;
+	SnModel* right_vert_snmodel = new SnModel(right_vert);
+	SnGroup* right_vert_grp = new SnGroup;
+	right_vert_manip->visible(false);
+	right_vert_grp->add(right_vert_snmodel);
+	right_vert_grp->top<SnModel>()->color(GsColor::white);
+	right_vert_manip->child(right_vert_grp);
+	right_vert_rotat.rotz(0);
+	right_vert_transl.translation(0.7f, 0.15f, -0.075f);
+	right_vert_start = right_vert_rotat * right_vert_transl;
+	right_vert_manip->initial_mat(right_vert_start);
+	right_vert->make_capsule(GsPnt(0, 0, 0), GsPnt(0.0f, 0.1f, 0), 0.015f, 0.015f, 100, true);
+
+	//right horizontal pedal strut
+	GsModel* right_horiz = new GsModel;
+	SnModel* right_horiz_snmodel = new SnModel(right_horiz);
+	SnGroup* right_horiz_grp = new SnGroup;
+	right_horiz_manip->visible(false);
+	right_horiz_grp->add(right_horiz_snmodel);
+	right_horiz_grp->top<SnModel>()->color(GsColor::white);
+	right_horiz_manip->child(right_horiz_grp);
+	right_horiz_rotat.rotz(0);
+	right_horiz_transl.translation(0.7f, 0.15f, -0.125f);
+	right_horiz_start = right_horiz_rotat * right_horiz_transl;
+	right_horiz_manip->initial_mat(right_horiz_start);
+	right_horiz->make_cylinder(GsPnt(0, 0, 0), GsPnt(0.0f, 0.0f, 0.05f), 0.015f, 0.015f, 100, true);
+
+	//Right pedal
+	GsModel* right_pedal = new GsModel;
+	SnModel* right_pedal_snmodel = new SnModel(right_pedal);
+	SnGroup* right_pedal_grp = new SnGroup;
+	right_pedal_manip->visible(false);
+	right_pedal_grp->add(right_pedal_snmodel);
+	right_pedal_grp->top<SnModel>()->color(GsColor::red);
+	right_pedal_manip->child(right_pedal_grp);
+	right_pedal_rotat.rotx(0);
+	right_pedal_transl.translation(0.665f, 0.125f, -0.2f);
+	right_pedal_start = right_pedal_rotat * right_pedal_transl;
+	right_pedal_manip->initial_mat(right_pedal_start);
+	right_pedal->make_box(GsBox(GsPnt(0.0f, 0.0f, 0.0f), GsPnt(0.075f, 0.045f, 0.1f)));
+}
+
+void MyViewer::build_floor() {
+	GsModel* floor = new GsModel;
+	SnModel* floor_snmodel = new SnModel(floor);
+	SnGroup* floor_group = new SnGroup;
+	floor_group->add(floor_snmodel);
+	floor_group->top<SnModel>()->color(GsColor::green);
+	//Adding components to front bar anchor
+	floor_manip->child(floor_group);
+	floor_group->add(trunk_manip);
+	floor_group->add(canopy_manip);
+
+	//front_bar placement
+	floor_rotat.rotx(GS_TORAD(0.0f));
+	floor_transl.translation(0, 0, 0);
+	floor_start = floor_rotat * floor_transl;
+	floor_manip->initial_mat(floor_start);
+	floor->make_box(GsBox(GsPnt(-10.0f, 0.0f, -10.0f), GsPnt(10.0f, 0.0f, 10.0f)));
+	floor_manip->visible(false);
+	rootg()->add(floor_manip);
+
+	GsModel* trunk = new GsModel;
+	SnModel* trunk_snmodel = new SnModel(trunk);
+	SnGroup* trunk_grp = new SnGroup;
+	trunk_manip->visible(false);
+	trunk_grp->add(trunk_snmodel);
+	trunk_grp->top<SnModel>()->color(GsColor::brown);
+	trunk_manip->child(trunk_grp);
+	trunk_rotat.rotz(0);
+	trunk_transl.translation(6.0f, 0.0f, -3.0f);
+	trunk_start = trunk_rotat * trunk_transl;
+	trunk_manip->initial_mat(trunk_start);
+	trunk->make_cylinder(GsPnt(0, 0, 0), GsPnt(0.0f, 2.5f, 0.0f), 0.5f, 0.5f, 100, true);
+
+	GsModel* canopy = new GsModel;
+	SnModel* canopy_snmodel = new SnModel(canopy);
+	SnGroup* canopy_grp = new SnGroup;
+	canopy_manip->visible(false);
+	canopy_grp->add(canopy_snmodel);
+	canopy_grp->top<SnModel>()->color(GsColor::green);
+	canopy_manip->child(canopy_grp);
+	canopy_rotat.rotz(0);
+	canopy_transl.translation(6.0f, 4.25f, -3.0f);
+	canopy_start = canopy_rotat * canopy_transl;
+	canopy_manip->initial_mat(canopy_start);
+	canopy->make_sphere(GsPnt(0, 0, 0), 2.0f, 100, true);
+}
+void MyViewer::build_scene() {
+	background(GsColor::gray);
+	build_front_end();
+	build_frame();
+	build_pedals();
+	//build_floor();
+}
+
+// Below is an example of how to control the main loop of an animation:
+void MyViewer::run_animation()
+{
+	if (_animating) return; // avoid recursive calls
+	_animating = true;
+
+	int ind = gs_random(0, rootg()->size() - 1); // pick one child
+	SnManipulator* manip = rootg()->get<SnManipulator>(ind); // access one of the manipulators
+	GsMat m = manip->mat();
+
+	double frdt = 1.0 / 30.0; // delta time to reach given number of frames per second
+	double v = 4; // target velocity is 1 unit per second
+	double t = 0, lt = 0, t0 = gs_time();
+	do // run for a while:
+	{
+		while (t - lt < frdt) { ws_check(); t = gs_time() - t0; } // wait until it is time for next frame
+		double yinc = (t - lt) * v;
+		if (t > 2) yinc = -yinc; // after 2 secs: go down
+		lt = t;
+		m.e24 += (float)yinc;
+		if (m.e24 < 0) m.e24 = 0; // make sure it does not go below 0
+		manip->initial_mat(m);
+		render(); // notify it needs redraw
+		ws_check(); // redraw now
+	} while (m.e24 > 0);
+	_animating = false;
+}
+
+
+int MyViewer::handle_keyboard(const GsEvent& e)
+{
+	int ret = WsViewer::handle_keyboard(e); // 1st let system check events
+	if (ret) return ret;
+
+	switch (e.key)
+	{
+	case GsEvent::KeyEsc: { gs_exit(); return 1; }
+	case GsEvent::KeyRight: {
+		front_bar_rotat.roty(GS_TORAD(-(currentWheelAngle + 3.0f)));
+		frame_top_rotat.roty(GS_TORAD(-(currentFrameAngle + 1.5f)));
+		pedals_cross_rotat.roty(GS_TORAD(-(currentFrameAngle + 1.5f)));
+		currentWheelAngle += 3.0f;
+		currentFrameAngle += 1.5f;
+		front_bar_manip->initial_mat(front_bar_start * front_bar_rotat);
+		frame_top_manip->initial_mat(frame_top_start * frame_top_rotat);
+		pedals_cross_manip->initial_mat(pedals_cross_start * pedals_cross_rotat);
+		redraw();
+		break;
+	}
+
+	case GsEvent::KeyLeft: {
+		front_bar_rotat.roty(GS_TORAD(currentWheelAngle - 3.0f));
+		frame_top_rotat.roty(GS_TORAD(currentFrameAngle - 1.5f));
+		pedals_cross_rotat.roty(GS_TORAD(currentFrameAngle - 1.5f));
+		currentWheelAngle -= 3.0f;
+		currentFrameAngle -= 1.5f;
+		front_bar_manip->initial_mat(front_bar_start * front_bar_rotat);
+		frame_top_manip->initial_mat(frame_top_start * frame_top_rotat);
+		pedals_cross_manip->initial_mat(pedals_cross_start * pedals_cross_rotat);
+		redraw();
+		break;
+	}
+
+
+	case 'a': return 1; 
+	}
+	return 0;
+
+}
+
+int MyViewer::uievent(int e)
+{
+	switch (e)
+	{
+	case EvNormals: return 1;
+	case EvAnimate: run_animation(); return 1;
+	case EvExit: gs_exit();
+	}
+	return WsViewer::uievent(e);
+}
